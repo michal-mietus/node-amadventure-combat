@@ -1,0 +1,34 @@
+extends layout
+
+block content
+  h1= title
+  h3= 'Hero Statistics'
+  ul
+    each statistic in data.hero_statistics
+      li
+        each value, key in statistic
+          p= key + ': ' + value
+  
+  h3= 'Hero Abilities'
+  ul 
+    each ability in data.hero_abilities
+      li
+        each value, key in ability
+          p= key + ': ' + value
+
+  h3= 'Fighting Mob Statistics'
+  ul 
+    each statistic in data.fighting_mob_statistics
+      li
+        each value, key in statistic
+          p= key + ': ' + value
+
+  h3= 'Fighting mob'
+  ul
+    each value, key in data.fighting_mob
+      li= key + ': ' + value
+
+  h3= 'Mob'
+  ul
+    each value, key in data.mob
+      li= key + ': ' + value
