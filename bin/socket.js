@@ -1,7 +1,6 @@
 var axios = require('axios');
-var apiAxios = axios.create({
+var axiosApi = axios.create({
   baseURL: 'http://localhost:8000/api/',
-  headers: {Authorization: token, },
 })
 
 const converters = {
@@ -51,17 +50,20 @@ class FightingCharacter {
     }
   }
 
-  delete(){
-    const url = 'http://localhost:8000/api/' + 'mob/delete/pk' 
+  deleteInDatabase(token){
+    const url = 'combat/fighting_mob/' + this.info.id + '/';
     const config = {
         headers: {
         Authorization: token,
       },
-    }
-    axios.post(
-
-    )
-  }
+    };
+    axiosApi.delete(
+        url,
+        config,
+      )
+      .then(response => (console.log('deleted')))
+      .catch(error => (console.error(error)));
+    };
   }
 
 class FightingHero extends FightingCharacter {
@@ -84,6 +86,7 @@ function connection (io) {
       if (mob.isDead()) {
         const winner = 'hero';
         socket.emit('fightResult', { hero, mob, winner });
+        mob.deleteInDatabase(globalToken);
         return true;
         // Add hero experience 
         // create api for hero upgrade --> Exp.
@@ -93,6 +96,7 @@ function connection (io) {
       if (hero.isDead()) {
         const winner = 'mob';
         socket.emit('fightResult', { hero, mob, winner })
+        mob.deleteInDatabase();
         return true;
       };
       
@@ -105,14 +109,14 @@ function connection (io) {
 
     socket.on('getData', function ({ token, locationId}) {
       globalToken = token;
-      const url = 'http://localhost:8000/api/artifical/expedition/' + locationId + '/';
+      const url = 'artifical/expedition/' + locationId + '/';
       const config = {
         headers: {
           Authorization: token,
         },
       };
 
-      axios
+      axiosApi
         .get(url, config)
         .then(response => (returnFightersAndData(response)))
         .then(data => {
@@ -128,7 +132,9 @@ function connection (io) {
 
 function returnFightersAndData (response) {
   mobInfo =  response.data.mob;
+  console.log(response.data)
   mobInfo['level'] = response.data.fighting_mob.level;
+  mobInfo['id'] = response.data.fighting_mob.id;
   data = {
     fightingMob: new FightingCharacter(mobInfo, response.data.fighting_mob_statistics),
     fightingHero: new FightingHero(response.data.hero, response.data.hero_statistics, response.data.hero_abilities),
