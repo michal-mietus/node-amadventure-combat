@@ -3,6 +3,8 @@ var axiosApi = axios.create({
   baseURL: 'http://localhost:8000/api/',
 })
 
+const fetch = require("node-fetch");
+
 const converters = {
   strength: {
     name: 'damage',
@@ -23,9 +25,10 @@ const converters = {
 }
 
 class FightingCharacter {
-  constructor(info, statistics){
+  constructor(info, statistics, token){
     this.info = info;
     this.mainStatistics = statistics;
+    this.token = token;
     this.derivativeStatistics = this.getDerivativeStatistics(statistics);
   }
 
@@ -61,7 +64,6 @@ class FightingCharacter {
         url,
         config,
       )
-      .then(response => (console.log('deleted')))
       .catch(error => (console.error(error)));
     };
   }
@@ -71,8 +73,30 @@ class FightingHero extends FightingCharacter {
     super(info, statistics);
     this.abilities = hero_abilities;
   }
+
+  addExperience(mob, token){
+    let experience = mob.info.level * 10;
+    let data = { "experience": experience };
+    let url = 'http://localhost:8000/api/hero/upgrade/';
+    // i have no idea why axios didnt work
+    fetch(url, {
+      method: "POST", 
+      mode: "cors", 
+      cache: "no-cache",
+      credentials: "same-origin", 
+      headers: {
+          "Content-Type": "application/json",
+          'Authorization': token,
+      },
+      redirect: "follow", 
+      referrer: "no-referrer", 
+      body: JSON.stringify(data),
+    })
+  }
 }
 
+
+// how can I make this code better?
 
 function connection (io) {
   io.on('connection', function (socket) {
@@ -81,26 +105,32 @@ function connection (io) {
     var abilities;
     var globalToken;
 
+    socket.on('userLeaveFight', function () {
+      // mob win
+      if (mob){
+        mob.deleteInDatabase(globalToken);
+      }
+      return true;
+    });
+
     socket.on('attack', function () {
       hero.attack(mob);
       if (mob.isDead()) {
         const winner = 'hero';
         socket.emit('fightResult', { hero, mob, winner });
         mob.deleteInDatabase(globalToken);
+        hero.addExperience(mob, globalToken);
         return true;
-        // Add hero experience 
-        // create api for hero upgrade --> Exp.
       };
 
       mob.attack(hero);
       if (hero.isDead()) {
+        // mob win
         const winner = 'mob';
         socket.emit('fightResult', { hero, mob, winner })
-        mob.deleteInDatabase();
+        mob.deleteInDatabase(globalToken);
         return true;
       };
-      
-      socket.emit('fightersChanged', { hero, mob })
     });
 
     socket.on('abilityUse', function () {
@@ -118,7 +148,7 @@ function connection (io) {
 
       axiosApi
         .get(url, config)
-        .then(response => (returnFightersAndData(response)))
+        .then(response => (returnFightersAndData(response, token)))
         .then(data => {
           hero = data.fightingHero;
           mob = data.fightingMob;
@@ -130,9 +160,9 @@ function connection (io) {
   }); 
 };
 
+
 function returnFightersAndData (response) {
   mobInfo =  response.data.mob;
-  console.log(response.data)
   mobInfo['level'] = response.data.fighting_mob.level;
   mobInfo['id'] = response.data.fighting_mob.id;
   data = {
