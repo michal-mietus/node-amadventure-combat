@@ -1,3 +1,4 @@
+const fetch = require("node-fetch");
 var FightingHero = require('./fightingModels').FightingHero;
 var FightingCharacter = require('./fightingModels').FightingCharacter;
 var axiosApi = require('./global').axiosApi;
@@ -5,10 +6,12 @@ var axiosApi = require('./global').axiosApi;
 
 function connection (io) {
   io.on('connection', function (socket) {
+    var globalToken;
     var hero;
     var mob;
     var abilities;
-    var globalToken;
+    var item;
+    var itemStatistics;
 
     socket.on('userLeaveFight', function () {
       // mob win
@@ -27,6 +30,8 @@ function connection (io) {
         hero.addExperience(mob, globalToken);
         drawItem(mob.info.level)
         .then(response => {
+          item = response.data.item;
+          itemStatistics = response.data.itemStatistics;
           socket.emit('itemDropped', response.data)
         })
         return true;
@@ -39,6 +44,28 @@ function connection (io) {
         mob.deleteInDatabase(globalToken);
         return true;
       };
+    });
+
+    socket.on('saveItemToHero', function () {
+      if (item){
+        let data = { "id": item.id };
+        let url = 'http://localhost:8000/api/hero/item/add/';
+        // i have no idea why axios didnt work
+        fetch(url, {
+          method: "POST", 
+          mode: "cors", 
+          cache: "no-cache",
+          credentials: "same-origin", 
+          headers: {
+              "Content-Type": "application/json",
+              'Authorization': globalToken,
+          },
+          redirect: "follow", 
+          referrer: "no-referrer", 
+          body: JSON.stringify(data),
+        })
+        .catch(error => console.error(error));
+      }
     });
 
     socket.on('abilityUse', function () {
