@@ -1,102 +1,7 @@
-var axios = require('axios');
-var axiosApi = axios.create({
-  baseURL: 'http://localhost:8000/api/',
-})
+var FightingHero = require('./fightingModels').FightingHero;
+var FightingCharacter = require('./fightingModels').FightingCharacter;
+var axiosApi = require('./global').axiosApi;
 
-const fetch = require("node-fetch");
-
-const converters = {
-  strength: {
-    name: 'damage',
-    converter: 0.5,
-  },
-  agility: {
-    name: 'critic_chance',
-    converter: 0.15,
-  },
-  intelligence: {
-    name: 'mana',
-    converter: 5,
-  },
-  health: {
-    name: 'health_points',
-    converter: 10,
-  },
-}
-
-class FightingCharacter {
-  constructor(info, statistics, token){
-    this.info = info;
-    this.mainStatistics = statistics;
-    this.token = token;
-    this.derivativeStatistics = this.getDerivativeStatistics(statistics);
-  }
-
-  getDerivativeStatistics(statistics) {
-    let derivativeStatistics = {};
-    for (var i=0; i<statistics.length; i++){
-      let name = converters[statistics[i].name].name;
-      let points = converters[statistics[i].name].converter * statistics[i].points;
-      derivativeStatistics[name] = points;
-    }
-    return derivativeStatistics;
-  }
-
-  attack(opponent){
-    let opponentHealth = opponent.derivativeStatistics.health_points - this.derivativeStatistics.damage
-    opponent.derivativeStatistics.health_points = opponentHealth;
-  }
-
-  isDead(){
-    if (this.derivativeStatistics.health_points <= 0) {
-      return true;
-    }
-  }
-
-  deleteInDatabase(token){
-    const url = 'combat/fighting_mob/' + this.info.id + '/';
-    const config = {
-        headers: {
-        Authorization: token,
-      },
-    };
-    axiosApi.delete(
-        url,
-        config,
-      )
-      .catch(error => (console.error(error)));
-    };
-  }
-
-class FightingHero extends FightingCharacter {
-  constructor(info, statistics, hero_abilities) {
-    super(info, statistics);
-    this.abilities = hero_abilities;
-  }
-
-  addExperience(mob, token){
-    let experience = mob.info.level * 10;
-    let data = { "experience": experience };
-    let url = 'http://localhost:8000/api/hero/upgrade/';
-    // i have no idea why axios didnt work
-    fetch(url, {
-      method: "POST", 
-      mode: "cors", 
-      cache: "no-cache",
-      credentials: "same-origin", 
-      headers: {
-          "Content-Type": "application/json",
-          'Authorization': token,
-      },
-      redirect: "follow", 
-      referrer: "no-referrer", 
-      body: JSON.stringify(data),
-    })
-  }
-}
-
-
-// how can I make this code better?
 
 function connection (io) {
   io.on('connection', function (socket) {
@@ -120,9 +25,12 @@ function connection (io) {
         socket.emit('fightResult', { hero, mob, winner });
         mob.deleteInDatabase(globalToken);
         hero.addExperience(mob, globalToken);
+        drawItem(mob.info.level)
+        .then(response => {
+          socket.emit('itemDropped', response.data)
+        })
         return true;
       };
-
       mob.attack(hero);
       if (hero.isDead()) {
         // mob win
@@ -145,7 +53,6 @@ function connection (io) {
           Authorization: token,
         },
       };
-
       axiosApi
         .get(url, config)
         .then(response => (returnFightersAndData(response, token)))
@@ -155,7 +62,7 @@ function connection (io) {
           abilities = data.abilities;
           socket.emit('getData', data)
         })
-        .catch(error => (console.log('ERROR\n', error)))
+        .catch(error => (console.error('ERROR\n', error)))
     });
   }); 
 };
@@ -172,6 +79,14 @@ function returnFightersAndData (response) {
   };
   return data;
 };
+
+
+const drawItem = async(level) => {
+  let data = { "level": level };
+  let url = 'http://localhost:8000/api/item/draw/';
+  return await axiosApi.post(url, data);
+}
+
 
 module.exports =  {
   connection
