@@ -1,85 +1,25 @@
-var axios = require('axios');
-var axiosApi = axios.create({
-  baseURL: 'http://localhost:8000/api/',
-})
-
-const converters = {
-  strength: {
-    name: 'damage',
-    converter: 0.5,
-  },
-  agility: {
-    name: 'critic_chance',
-    converter: 0.15,
-  },
-  intelligence: {
-    name: 'mana',
-    converter: 5,
-  },
-  health: {
-    name: 'health_points',
-    converter: 10,
-  },
-}
-
-class FightingCharacter {
-  constructor(info, statistics){
-    this.info = info;
-    this.mainStatistics = statistics;
-    this.derivativeStatistics = this.getDerivativeStatistics(statistics);
-  }
-
-  getDerivativeStatistics(statistics) {
-    let derivativeStatistics = {};
-    for (var i=0; i<statistics.length; i++){
-      let name = converters[statistics[i].name].name;
-      let points = converters[statistics[i].name].converter * statistics[i].points;
-      derivativeStatistics[name] = points;
-    }
-    return derivativeStatistics;
-  }
-
-  attack(opponent){
-    let opponentHealth = opponent.derivativeStatistics.health_points - this.derivativeStatistics.damage
-    opponent.derivativeStatistics.health_points = opponentHealth;
-  }
-
-  isDead(){
-    if (this.derivativeStatistics.health_points <= 0) {
-      return true;
-    }
-  }
-
-  deleteInDatabase(token){
-    const url = 'combat/fighting_mob/' + this.info.id + '/';
-    const config = {
-        headers: {
-        Authorization: token,
-      },
-    };
-    axiosApi.delete(
-        url,
-        config,
-      )
-      .then(response => (console.log('deleted')))
-      .catch(error => (console.error(error)));
-    };
-  }
-
-class FightingHero extends FightingCharacter {
-  constructor(info, statistics, hero_abilities) {
-    super(info, statistics);
-    this.abilities = hero_abilities;
-  }
-}
+const fetch = require("node-fetch");
+var FightingHero = require('./fightingModels').FightingHero;
+var FightingCharacter = require('./fightingModels').FightingCharacter;
+var axiosApi = require('./global').axiosApi;
 
 
 function connection (io) {
   io.on('connection', function (socket) {
+    var globalToken;
     var hero;
     var mob;
     var abilities;
-    var globalToken;
+    var item;
+    var itemStatistics;
+
+    socket.on('userLeaveFight', function () {
+      // mob win
+      if (mob){
+        mob.deleteInDatabase(globalToken);
+      }
+      return true;
+    });
 
     socket.on('attack', function () {
       hero.attack(mob);
@@ -87,20 +27,45 @@ function connection (io) {
         const winner = 'hero';
         socket.emit('fightResult', { hero, mob, winner });
         mob.deleteInDatabase(globalToken);
+        hero.addExperience(mob, globalToken);
+        drawItem(mob.info.level)
+        .then(response => {
+          item = response.data.item;
+          itemStatistics = response.data.itemStatistics;
+          socket.emit('itemDropped', response.data)
+        })
         return true;
-        // Add hero experience 
-        // create api for hero upgrade --> Exp.
       };
-
       mob.attack(hero);
       if (hero.isDead()) {
+        // mob win
         const winner = 'mob';
         socket.emit('fightResult', { hero, mob, winner })
-        mob.deleteInDatabase();
+        mob.deleteInDatabase(globalToken);
         return true;
       };
-      
-      socket.emit('fightersChanged', { hero, mob })
+    });
+
+    socket.on('saveItemToHero', function () {
+      if (item){
+        let data = { "id": item.id };
+        let url = 'http://localhost:8000/api/hero/item/add/';
+        // i have no idea why axios didnt work
+        fetch(url, {
+          method: "POST", 
+          mode: "cors", 
+          cache: "no-cache",
+          credentials: "same-origin", 
+          headers: {
+              "Content-Type": "application/json",
+              'Authorization': globalToken,
+          },
+          redirect: "follow", 
+          referrer: "no-referrer", 
+          body: JSON.stringify(data),
+        })
+        .catch(error => console.error(error));
+      }
     });
 
     socket.on('abilityUse', function () {
@@ -115,24 +80,23 @@ function connection (io) {
           Authorization: token,
         },
       };
-
       axiosApi
         .get(url, config)
-        .then(response => (returnFightersAndData(response)))
+        .then(response => (returnFightersAndData(response, token)))
         .then(data => {
           hero = data.fightingHero;
           mob = data.fightingMob;
           abilities = data.abilities;
           socket.emit('getData', data)
         })
-        .catch(error => (console.log('ERROR\n', error)))
+        .catch(error => (console.error('ERROR\n', error)))
     });
   }); 
 };
 
+
 function returnFightersAndData (response) {
   mobInfo =  response.data.mob;
-  console.log(response.data)
   mobInfo['level'] = response.data.fighting_mob.level;
   mobInfo['id'] = response.data.fighting_mob.id;
   data = {
@@ -142,6 +106,14 @@ function returnFightersAndData (response) {
   };
   return data;
 };
+
+
+const drawItem = async(level) => {
+  let data = { "level": level };
+  let url = 'http://localhost:8000/api/item/draw/';
+  return await axiosApi.post(url, data);
+}
+
 
 module.exports =  {
   connection
